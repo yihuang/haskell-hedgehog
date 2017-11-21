@@ -1,0 +1,28 @@
+#!/bin/sh -eux
+
+status() {
+  curl --silent -X POST https://api.github.com/repos/$TRAVIS_REPO_SLUG/statuses/$HEAD -d "{
+    \"state\": \"$1\",
+    \"description\": \"$2\",
+    \"target_url\": \"https://travis-ci.org/$TRAVIS_REPO_SLUG/jobs/${TRAVIS_BUILD_ID}\",
+    \"context\": \"rebased\"
+  }"
+}
+
+for BRANCH in $(git branch -r --no-merged "origin/master" | grep "x/"); do
+  BRANCH=$(echo "$BRANCH")
+  if ! git rev-parse $BRANCH > /dev/null 2>&1; then
+    echo "ref does not exist"
+    continue
+  fi
+  HEAD=$(git rev-parse $BRANCH)
+  if $(git branch -r --merged $BRANCH | grep -q origin/master); then
+    if [ $(git log --oneline --grep=fixupx\! ^origin/master $BRANCH | wc -l) = 0 ]; then
+      status "success" "rebased"
+    else
+      status "failure" "fixups"
+    fi
+  else
+    status "failure" "not rebased"
+  fi
+done

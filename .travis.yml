@@ -38,3 +38,4 @@ install:
 
 script:
  - bin/travis_script
+ - bin/rebase
