@@ -9,6 +9,8 @@ status() {
   }"
 }
 
+echo $(git branch -a)
+
 for BRANCH in $(git branch -r --no-merged "origin/master" | grep "x/"); do
   BRANCH=$(echo "$BRANCH")
   if ! git rev-parse $BRANCH > /dev/null 2>&1; then
