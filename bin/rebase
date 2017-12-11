@@ -11,7 +11,7 @@ status() {
 
 git fetch origin master:master || exit 0;
 
-for BRANCH in $(git branch -r --no-merged "origin/master" | grep "x/"); do
+for BRANCH in $(git branch -r --no-merged "master"); do
   BRANCH=$(echo "$BRANCH")
   if ! git rev-parse $BRANCH > /dev/null 2>&1; then
     echo "ref does not exist"
