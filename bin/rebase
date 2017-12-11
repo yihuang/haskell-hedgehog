@@ -9,7 +9,7 @@ status() {
   }"
 }
 
-echo $(git branch -a)
+git fetch origin master:master || exit 0;
 
 for BRANCH in $(git branch -r --no-merged "origin/master" | grep "x/"); do
   BRANCH=$(echo "$BRANCH")
