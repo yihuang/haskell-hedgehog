@@ -24,10 +24,12 @@ module Hedgehog.Internal.Property (
   , DiscardLimit(..)
   , ShrinkLimit(..)
   , ShrinkRetries(..)
+  , TestTimeout(..)
   , withTests
   , withDiscards
   , withShrinks
   , withRetries
+  , withTimeout
   , property
   , test
   , forAll
@@ -193,6 +195,7 @@ data PropertyConfig =
     , propertyDiscardLimit :: !DiscardLimit
     , propertyShrinkLimit :: !ShrinkLimit
     , propertyShrinkRetries :: !ShrinkRetries
+    , propertyTimeout :: !(Maybe TestTimeout)
     } deriving (Eq, Ord, Show)
 
 -- | The number of successful tests that need to be run before a property test
@@ -251,6 +254,19 @@ newtype ShrinkLimit =
 newtype ShrinkRetries =
   ShrinkRetries Int
   deriving (Eq, Ord, Show, Num, Enum, Real, Integral)
+
+-- | TODO Timeout in microseconds
+--
+--   Can be constructed using numeric literals:
+--
+-- @
+--   1000 :: TestTimeout
+-- @
+--
+newtype TestTimeout =
+  TestTimeout Int
+  deriving (Eq, Ord, Show, Num, Enum, Real, Integral)
+
 
 -- | A named collection of property tests.
 --
@@ -720,6 +736,8 @@ defaultConfig =
         1000
     , propertyShrinkRetries =
         0
+    , propertyTimeout =
+        Nothing
     }
 
 -- | Map a config modification function over a property.
@@ -757,6 +775,12 @@ withRetries :: ShrinkRetries -> Property -> Property
 withRetries n =
   mapConfig $ \config -> config { propertyShrinkRetries = n }
 
+-- | todo
+--
+withTimeout :: TestTimeout -> Property -> Property
+withTimeout n =
+  mapConfig $ \config -> config { propertyTimeout = Just n }
+
 -- | Creates a property with the default configuration.
 --
 property :: HasCallStack => PropertyT IO () -> Property
@@ -774,6 +798,7 @@ $(deriveLift ''TestLimit)
 $(deriveLift ''DiscardLimit)
 $(deriveLift ''ShrinkLimit)
 $(deriveLift ''ShrinkRetries)
+$(deriveLift ''TestTimeout)
 
 ------------------------------------------------------------------------
 -- Internal

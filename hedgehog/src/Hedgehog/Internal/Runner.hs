@@ -16,14 +16,26 @@ module Hedgehog.Internal.Runner (
   , checkSequential
   , checkGroup
 
+
   -- * Internal
   , checkReport
   , checkRegion
   , checkNamed
   ) where
 
+import           Control.Concurrent.Async (Async, waitSTM, waitEither)
+import           Control.Concurrent.Async (async, cancel, wait, cancelWith, waitCatch)
+import           Control.Exception.Base (SomeException(..), Exception(..), AsyncException(..))
+import           Control.Monad.Catch (catch, throwM, fromException)
+import           Control.Exception (asyncExceptionToException, asyncExceptionFromException)
+import           Data.IORef (newIORef, readIORef, writeIORef)
+import           Control.Monad.Trans.Except (ExceptT, throwE)
+import           Data.Bool (bool)
+import           Control.Monad.Morph (MFunctor(..))
+
 import           Control.Concurrent.STM (TVar, atomically)
 import qualified Control.Concurrent.STM.TVar as TVar
+
 import           Control.Monad.Catch (MonadCatch(..), catchAll)
 import           Control.Monad.IO.Class (MonadIO(..))
 
@@ -35,11 +47,13 @@ import           Hedgehog.Internal.Property (Group(..), GroupName(..))
 import           Hedgehog.Internal.Property (Property(..), PropertyConfig(..), PropertyName(..))
 import           Hedgehog.Internal.Property (ShrinkLimit, ShrinkRetries, withTests)
 import           Hedgehog.Internal.Property (PropertyT(..), Log(..), Failure(..), runTestT)
+import           Hedgehog.Internal.Property (TestTimeout(..))
 import           Hedgehog.Internal.Queue
 import           Hedgehog.Internal.Region
 import           Hedgehog.Internal.Report
 import           Hedgehog.Internal.Seed (Seed)
 import qualified Hedgehog.Internal.Seed as Seed
+import           Hedgehog.Internal.Timeout
 import           Hedgehog.Internal.Tree (Tree(..), Node(..))
 import           Hedgehog.Range (Size)
 
@@ -143,13 +157,15 @@ checkReport ::
   => PropertyConfig
   -> Size
   -> Seed
-  -> PropertyT m ()
+  -> PropertyT IO ()
   -> (Report Progress -> m ())
   -> m (Report Result)
 checkReport cfg size0 seed0 test0 updateUI =
   let
     test =
-      catchAll test0 (fail . show)
+      test0
+
+--      catchAll test0 (fail . show)
 
     loop :: TestCount -> DiscardCount -> Size -> Seed -> m (Report Result)
     loop !tests !discards !size !seed = do
@@ -170,29 +186,41 @@ checkReport cfg size0 seed0 test0 updateUI =
       else
         case Seed.split seed of
           (s0, s1) -> do
-            node@(Node x _) <-
-              runTree . runDiscardEffect $ runGenT size s0 . runTestT $ unPropertyT test
-            case x of
+            a <- liftIO . async $ (runTree . runDiscardEffect $ runGenT size s0 . runTestT $ unPropertyT test)
+            f <- case propertyTimeout cfg of
               Nothing ->
-                loop tests (discards + 1) (size + 1) s1
+                fmap Ok . liftIO $ wait a
+              Just (TestTimeout n) ->
+                liftIO $ waitWithTimeout n a
 
-              Just (Left _, _) ->
-                let
-                  mkReport =
-                    Report (tests + 1) discards
-                in
-                  fmap mkReport $
-                    takeSmallest
-                      size
-                      seed
-                      0
-                      (propertyShrinkLimit cfg)
-                      (propertyShrinkRetries cfg)
-                      (updateUI . mkReport)
-                      node
+            case f of
+              Bad i -> do
+                pure $ Report tests discards (Failed $ mkFailure size seed 0 Nothing ("Timeout failure after " <> show i <> " microseconds") Nothing [])
+              Badder _er -> do
+                -- TODO takeSmallest
+                pure $ Report tests discards (Failed $ mkFailure size seed 0 Nothing "error" Nothing [])
+              Ok node@(Node x _) -> do
+                case x of
+                  Nothing ->
+                    loop tests (discards + 1) (size + 1) s1
 
-              Just (Right (), _) ->
-                loop (tests + 1) discards (size + 1) s1
+                  Just (Left _, _) ->
+                    let
+                      mkReport =
+                        Report (tests + 1) discards
+                    in
+                      fmap mkReport $
+                        takeSmallest
+                          size
+                          seed
+                          0
+                          (propertyShrinkLimit cfg)
+                          (propertyShrinkRetries cfg)
+                          (updateUI . mkReport)
+                          (hoist liftIO node)
+
+                  Just (Right (), _) ->
+                    loop (tests + 1) discards (size + 1) s1
   in
     loop 0 0 size0 seed0
 

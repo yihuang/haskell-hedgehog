@@ -4,7 +4,7 @@ module Hedgehog.Internal.Exception (
   , tryEvaluate
   ) where
 
-import           Control.Exception (Exception(..), AsyncException, SomeException(..), evaluate)
+import           Control.Exception (Exception(..), SomeException(..), evaluate, SomeAsyncException(..))
 import           Control.Monad.Catch (MonadCatch(..), throwM)
 
 import           System.IO.Unsafe (unsafePerformIO)
@@ -13,7 +13,7 @@ import           System.IO.Unsafe (unsafePerformIO)
 tryAll :: MonadCatch m => m a -> m (Either SomeException a)
 tryAll m =
   catch (fmap Right m) $ \exception ->
-    case fromException exception :: Maybe AsyncException of
+    case fromException exception :: Maybe SomeAsyncException of
       Nothing ->
         pure $ Left exception
       Just async ->
