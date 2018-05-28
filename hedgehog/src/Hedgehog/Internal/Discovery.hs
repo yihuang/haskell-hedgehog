@@ -1,6 +1,6 @@
 {-# OPTIONS_HADDOCK not-home #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Hedgehog.Internal.Discovery (
     PropertySource(..)
@@ -12,18 +12,18 @@ module Hedgehog.Internal.Discovery (
   , Position(..)
   ) where
 
-import           Control.Exception (IOException, handle)
-import           Control.Monad.IO.Class (MonadIO(..))
+import           Control.Exception          (IOException, handle)
+import           Control.Monad.IO.Class     (MonadIO (..))
 
-import qualified Data.Char as Char
-import qualified Data.List as List
-import           Data.Map (Map)
-import qualified Data.Map as Map
-import qualified Data.Ord as Ord
-import           Data.Semigroup (Semigroup(..))
+import qualified Data.Char                  as Char
+import qualified Data.List                  as List
+import           Data.Map                   (Map)
+import qualified Data.Map                   as Map
+import qualified Data.Ord                   as Ord
+import           Data.Semigroup             (Semigroup (..))
 
-import           Hedgehog.Internal.Property (PropertyName(..))
-import           Hedgehog.Internal.Source (LineNo(..), ColumnNo(..))
+import           Hedgehog.Internal.Property (PropertyName (..))
+import           Hedgehog.Internal.Source   (ColumnNo (..), LineNo (..))
 
 ------------------------------------------------------------------------
 -- Property Extraction
@@ -33,9 +33,9 @@ newtype PropertySource =
       propertySource :: Pos String
     } deriving (Eq, Ord, Show)
 
-readProperties :: MonadIO m => FilePath -> m (Map PropertyName PropertySource)
-readProperties path =
-  findProperties path <$> liftIO (readFile path)
+readProperties :: MonadIO m => String -> FilePath -> m (Map PropertyName PropertySource)
+readProperties prefix path =
+  findProperties prefix path <$> liftIO (readFile path)
 
 readDeclaration :: MonadIO m => FilePath -> LineNo -> m (Maybe (String, Pos String))
 readDeclaration path line = do
@@ -59,11 +59,11 @@ takeHead = \case
   x : _ ->
     Just x
 
-findProperties :: FilePath -> String -> Map PropertyName PropertySource
-findProperties path =
+findProperties :: String -> FilePath -> String -> Map PropertyName PropertySource
+findProperties prefix path =
   Map.map PropertySource .
   Map.mapKeysMonotonic PropertyName .
-  Map.filterWithKey (\k _ -> isProperty k) .
+  Map.filterWithKey (\k _ -> List.isPrefixOf prefix k) .
   findDeclarations path
 
 findDeclarations :: FilePath -> String -> Map String (Pos String)
@@ -71,10 +71,6 @@ findDeclarations path =
   declarations .
   classified .
   positioned path
-
-isProperty :: String -> Bool
-isProperty =
-  List.isPrefixOf "prop_"
 
 ------------------------------------------------------------------------
 -- Declaration Identification
@@ -152,7 +148,7 @@ data Class =
 data Classified a =
   Classified {
       _classifiedClass :: !Class
-    , classifiedValue :: !a
+    , classifiedValue  :: !a
     } deriving (Eq, Ord, Show)
 
 classified :: [Pos Char] -> [Classified (Pos Char)]
@@ -201,15 +197,15 @@ classified =
 
 data Position =
   Position {
-      _posPath :: !FilePath
-    , posLine :: !LineNo
+      _posPath  :: !FilePath
+    , posLine   :: !LineNo
     , posColumn :: !ColumnNo
     } deriving (Eq, Ord, Show)
 
 data Pos a =
   Pos {
       posPostion :: !Position
-    , posValue :: a
+    , posValue   :: a
     } deriving (Eq, Ord, Show, Functor)
 
 instance Semigroup a => Semigroup (Pos a) where
